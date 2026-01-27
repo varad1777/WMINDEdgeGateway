@@ -1,64 +1,123 @@
-﻿using System;
+﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Linq;
 using System.Net.Http;
+using WMINDEdgeGateway.Application.DTOs;
 using WMINDEdgeGateway.Application.Interfaces;
 using WMINDEdgeGateway.Infrastructure.Caching;
 using WMINDEdgeGateway.Infrastructure.Services;
 
-Console.WriteLine("Edge Gateway Console App Starting...");
-
-
-string gatewayClientId = "GW-ac251c7e979a4011879b7ac95f68c89d";
-string gatewayClientSecret = "v9VJfrIQeceskTl4Snur9gn9BO8GZcdTK/M6HT0FeCc=";
-
-
-string authBaseUrl = "http://localhost:5000";       
-string deviceApiBaseUrl = "http://localhost:5000";
-
-var authHttp = new HttpClient { BaseAddress = new Uri(authBaseUrl) };
-var deviceHttp = new HttpClient { BaseAddress = new Uri(deviceApiBaseUrl) };
-
-IAuthClient authClient = new AuthClient(authHttp);
-IDeviceServiceClient deviceClient = new DeviceServiceClient(deviceHttp);
-var cache = new MemoryCacheService();
-
-try
-{
-    var tokenResponse = await authClient.GetTokenAsync(gatewayClientId, gatewayClientSecret);
-    if (tokenResponse == null || string.IsNullOrEmpty(tokenResponse.AccessToken))
+var host = Host.CreateDefaultBuilder(args)
+    .ConfigureServices((context, services) =>
     {
-        Console.WriteLine("Error: Failed to retrieve a valid token from the auth service.");
-    }
-    else
+        // -----------------------------
+        // EXISTING DEPENDENCIES
+        // -----------------------------
+        services.AddSingleton<IAuthClient>(sp =>
+        {
+            var http = new HttpClient { BaseAddress = new Uri("http://localhost:5000") };
+            return new AuthClient(http);
+        });
+
+        services.AddSingleton<IDeviceServiceClient>(sp =>
+        {
+            var http = new HttpClient { BaseAddress = new Uri("http://localhost:5000") };
+            return new DeviceServiceClient(http);
+        });
+
+        services.AddSingleton<MemoryCacheService>();
+        services.AddMemoryCache();
+
+        // -----------------------------
+        // OPC UA BACKGROUND SERVICE
+        // -----------------------------
+        services.AddHostedService<OpcUaPollerHostedService>();
+    })
+    .ConfigureLogging(logging =>
     {
-        string token = tokenResponse.AccessToken;
-        Console.WriteLine($"Token received: {token}");
+        logging.ClearProviders();
+        logging.AddConsole();
+    })
+    .Build();
 
-        try
-        {
-            var configs = await deviceClient.GetConfigurationsAsync(gatewayClientId, token);
-            Console.WriteLine($"Fetched {configs.Length} configurations");
+// -----------------------------
+// INITIALIZE CACHE BEFORE STARTING
+// -----------------------------
+await InitializeCacheAsync(host.Services);
 
-            cache.Set("DeviceConfigurations", configs, TimeSpan.FromMinutes(30));
-            Console.WriteLine("Configurations cached in memory");
-        }
-        catch (HttpRequestException httpEx)
-        {
-            Console.WriteLine($"HTTP error while fetching device configurations: {httpEx.Message}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Unexpected error while fetching device configurations: {ex.Message}");
-        }
-    }
-}
-catch (HttpRequestException httpEx)
+// -----------------------------
+// START THE HOST
+// -----------------------------
+await host.RunAsync();
+
+// -----------------------------
+// HELPER METHOD
+// -----------------------------
+async Task InitializeCacheAsync(IServiceProvider services)
 {
-    Console.WriteLine($"HTTP error while fetching token: {httpEx.Message}");
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"Unexpected error while fetching token: {ex.Message}");
-}
+    var authClient = services.GetRequiredService<IAuthClient>();
+    var deviceClient = services.GetRequiredService<IDeviceServiceClient>();
+    var cache = services.GetRequiredService<MemoryCacheService>();
 
-Console.WriteLine("Press any key to exit...");
-Console.ReadKey();
+    Console.WriteLine("Edge Gateway Console App Starting...");
+
+    string gatewayClientId = "GW-11c4f00a40204babb2a62796f1616b35";
+    string gatewayClientSecret = "SohYn6CiMdkwubukjv0XCnSm24qVNHGl1T3uMT0v3xg=";
+
+    // Fetch device configs from API
+    var token = (await authClient.GetTokenAsync(gatewayClientId, gatewayClientSecret))?.AccessToken ?? "";
+    var configs = await deviceClient.GetConfigurationsAsync(gatewayClientId, token);
+
+    // -----------------------------
+    // CREATE OPC UA TEST DEVICE
+    // -----------------------------
+    var opcDevice = new DeviceConfigurationDto(
+        Id: Guid.NewGuid(),
+        DeviceName: "Machine1",
+        Protocol: "OpcUa",
+        PollIntervalMs: 1000,
+        ConfigurationJson: "{}",
+        Slaves: new[]
+        {
+            new DeviceSlaveDto(
+                DeviceSlaveId: Guid.NewGuid(),
+                SlaveIndex: 1,
+                IsHealthy: true,
+                Registers: null,
+                Signals: new[]
+                {
+                    new OpcSignalDto(
+                        SignalId: Guid.NewGuid(),
+                        SignalName: "Temperature",
+                        NodeId: "ns=2;s=WMIND/Machine1/Temperature",
+                        DataType: "Double",
+                        Scale: 1.0,
+                        Unit: "°C",
+                        IsHealthy: true
+                    ),
+                    new OpcSignalDto(
+                        SignalId: Guid.NewGuid(),
+                        SignalName: "Voltage",
+                        NodeId: "ns=2;s=WMIND/Machine1/Voltage",
+                        DataType: "Double",
+                        Scale: 1.0,
+                        Unit: "V",
+                        IsHealthy: true
+                    )
+                }
+            )
+        }
+    );
+
+    // Combine all configs and set in cache
+    var allConfigs = (configs ?? Array.Empty<DeviceConfigurationDto>()).ToList();
+    allConfigs.Add(opcDevice);
+    
+    cache.Set("DeviceConfigurations", allConfigs, TimeSpan.FromMinutes(30));
+    cache.PrintCache();
+
+    Console.WriteLine("✅ OPC UA Test Device Injected into Cache");
+    Console.WriteLine($"✅ Total devices in cache: {allConfigs.Count}");
+}
