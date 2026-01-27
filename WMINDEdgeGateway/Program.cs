@@ -29,6 +29,10 @@ string deviceApiBaseUrl =
     configuration["Services:DeviceApiBaseUrl"]
     ?? throw new Exception("Missing Services:DeviceApiBaseUrl");
 
+string gatewayClientId = "GW-8c96595a802a40ccb80a0a6f480638d6";
+string gatewayClientSecret = "mgdk9LpTvPHNvvMpD6Oys7TkUCj8Q4qFnjdruVDDPnY=";
+
+
 
 
 var authHttp = new HttpClient { BaseAddress = new Uri(authBaseUrl) };
