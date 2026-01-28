@@ -1,83 +1,96 @@
-﻿using System;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Linq;
 using System.Net.Http;
+using WMINDEdgeGateway.Application.DTOs;
 using WMINDEdgeGateway.Application.Interfaces;
 using WMINDEdgeGateway.Infrastructure.Caching;
 using WMINDEdgeGateway.Infrastructure.Services;
-using Microsoft.Extensions.Configuration;
 
+var host = Host.CreateDefaultBuilder(args)
+    .ConfigureServices((context, services) =>
+    {
+        IConfiguration configuration = context.Configuration;
 
-Console.WriteLine("Edge Gateway Console App Starting...");
+        // -----------------------------
+        // AUTH CLIENT
+        // -----------------------------
+        services.AddSingleton<IAuthClient>(sp =>
+        {
+            var http = new HttpClient
+            {
+                BaseAddress = new Uri(configuration["Services:AuthBaseUrl"]!)
+            };
+            return new AuthClient(http);
+        });
 
-var configuration = new ConfigurationBuilder()
-    .SetBasePath(AppContext.BaseDirectory)
-    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+        // -----------------------------
+        // DEVICE SERVICE CLIENT
+        // -----------------------------
+        services.AddSingleton<IDeviceServiceClient>(sp =>
+        {
+            var http = new HttpClient
+            {
+                BaseAddress = new Uri(configuration["Services:DeviceApiBaseUrl"]!)
+            };
+            return new DeviceServiceClient(http);
+        });
+
+        // -----------------------------
+        // CACHE
+        // -----------------------------
+        services.AddMemoryCache();
+        services.AddSingleton<MemoryCacheService>();
+
+        // -----------------------------
+        // MODBUS BACKGROUND SERVICE
+        // -----------------------------
+        services.AddHostedService<ModbusPollerHostedService>();
+    })
+    .ConfigureLogging(logging =>
+    {
+        logging.ClearProviders();
+        logging.AddConsole();
+    })
     .Build();
 
-string gatewayClientId =
-    configuration["Gateway:ClientId"]
-    ?? throw new Exception("Missing Gateway:ClientId");
+// ---------------------------------
+// INITIALIZE CACHE BEFORE HOST START
+// ---------------------------------
+await InitializeCacheAsync(host.Services);
 
-string gatewayClientSecret =
-    configuration["Gateway:ClientSecret"]
-    ?? throw new Exception("Missing Gateway:ClientSecret");
+// ---------------------------------
+// START HOST
+// ---------------------------------
+await host.RunAsync();
 
-string authBaseUrl =
-    configuration["Services:AuthBaseUrl"]
-    ?? throw new Exception("Missing Services:AuthBaseUrl");
-
-string deviceApiBaseUrl =
-    configuration["Services:DeviceApiBaseUrl"]
-    ?? throw new Exception("Missing Services:DeviceApiBaseUrl");
-
-
-
-var authHttp = new HttpClient { BaseAddress = new Uri(authBaseUrl) };
-var deviceHttp = new HttpClient { BaseAddress = new Uri(deviceApiBaseUrl) };
-
-IAuthClient authClient = new AuthClient(authHttp);
-IDeviceServiceClient deviceClient = new DeviceServiceClient(deviceHttp);
-var cache = new MemoryCacheService();
-
-try
+// ---------------------------------
+// HELPER METHOD
+// ---------------------------------
+async Task InitializeCacheAsync(IServiceProvider services)
 {
+    var authClient = services.GetRequiredService<IAuthClient>();
+    var deviceClient = services.GetRequiredService<IDeviceServiceClient>();
+    var cache = services.GetRequiredService<MemoryCacheService>();
+    var configuration = services.GetRequiredService<IConfiguration>();
+
+    Console.WriteLine("Edge Gateway Console App Starting...");
+
+    string gatewayClientId = configuration["Gateway:ClientId"]!;
+    string gatewayClientSecret = configuration["Gateway:ClientSecret"]!;
+
     var tokenResponse = await authClient.GetTokenAsync(gatewayClientId, gatewayClientSecret);
-    if (tokenResponse == null || string.IsNullOrEmpty(tokenResponse.AccessToken))
-    {
-        Console.WriteLine("Error: Failed to retrieve a valid token from the auth service.");
-    }
-    else
-    {
-        string token = tokenResponse.AccessToken;
-        //Console.WriteLine($"Token received: {token}");
+    var accessToken = tokenResponse?.AccessToken ?? "";
 
-        try
-        {
-            var configs = await deviceClient.GetConfigurationsAsync(gatewayClientId, token);
-            Console.WriteLine($"Fetched {configs.Length} configurations");
+    var configs = await deviceClient.GetConfigurationsAsync(gatewayClientId, accessToken);
+    var allConfigs = (configs ?? Array.Empty<DeviceConfigurationDto>()).ToList();
 
-            cache.Set("DeviceConfigurations", configs, TimeSpan.FromMinutes(30));
-            Console.WriteLine("Configurations cached in memory");
-            cache.PrintCache();
+    cache.Set("DeviceConfigurations", allConfigs, TimeSpan.FromMinutes(30));
+    cache.PrintCache();
 
-        }
-        catch (HttpRequestException httpEx)
-        {
-            Console.WriteLine($"HTTP error while fetching device configurations: {httpEx.Message}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Unexpected error while fetching device configurations: {ex.Message}");
-        }
-    }
+    Console.WriteLine("Modbus devices loaded into cache");
+    Console.WriteLine($"Total devices in cache: {allConfigs.Count}");
 }
-catch (HttpRequestException httpEx)
-{
-    Console.WriteLine($"HTTP error while fetching token: {httpEx.Message}");
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"Unexpected error while fetching token: {ex.Message}");
-}
-
-Console.WriteLine("Press any key to exit...");
-Console.ReadKey();
