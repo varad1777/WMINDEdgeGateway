@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -25,6 +26,17 @@ var host = Host.CreateDefaultBuilder(args)
                 BaseAddress = new Uri(configuration["Services:AuthBaseUrl"]!)
             };
             return new AuthClient(http);
+        });
+
+        // TOKEN SERVICE (ADD THIS)
+        // -----------------------------
+        services.AddSingleton<TokenService>(sp =>
+        {
+            var authClient = sp.GetRequiredService<IAuthClient>();
+            var memoryCache = sp.GetRequiredService<IMemoryCache>();
+            var clientId = configuration["Gateway:ClientId"]!;
+            var clientSecret = configuration["Gateway:ClientSecret"]!;
+            return new TokenService(authClient, memoryCache, clientId, clientSecret);
         });
 
         // -----------------------------
@@ -72,7 +84,7 @@ await host.RunAsync();
 // ---------------------------------
 async Task InitializeCacheAsync(IServiceProvider services)
 {
-    var authClient = services.GetRequiredService<IAuthClient>();
+    var tokenService = services.GetRequiredService<TokenService>();
     var deviceClient = services.GetRequiredService<IDeviceServiceClient>();
     var cache = services.GetRequiredService<MemoryCacheService>();
     var configuration = services.GetRequiredService<IConfiguration>();
@@ -80,10 +92,9 @@ async Task InitializeCacheAsync(IServiceProvider services)
     Console.WriteLine("Edge Gateway Console App Starting...");
 
     string gatewayClientId = configuration["Gateway:ClientId"]!;
-    string gatewayClientSecret = configuration["Gateway:ClientSecret"]!;
 
-    var tokenResponse = await authClient.GetTokenAsync(gatewayClientId, gatewayClientSecret);
-    var accessToken = tokenResponse?.AccessToken ?? "";
+    // ✅ Get auto-refresh token
+    var accessToken = await tokenService.GetTokenAsync();
 
     var configs = await deviceClient.GetConfigurationsAsync(gatewayClientId, accessToken);
     var allConfigs = (configs ?? Array.Empty<DeviceConfigurationDto>()).ToList();
@@ -94,3 +105,4 @@ async Task InitializeCacheAsync(IServiceProvider services)
     Console.WriteLine("Modbus devices loaded into cache");
     Console.WriteLine($"Total devices in cache: {allConfigs.Count}");
 }
+
