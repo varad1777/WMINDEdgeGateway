@@ -25,14 +25,11 @@ namespace WMINDEdgeGateway.Infrastructure.Services
             if (string.IsNullOrWhiteSpace(token))
                 throw new ArgumentException("Token cannot be empty", nameof(token));
 
-            // Clear previous headers and add Bearer token
             _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-            // Call API
             var response = await _http.GetAsync($"/api/devices/devices/configurations/gateway/{gatewayId}");
             response.EnsureSuccessStatusCode();
 
-            // Deserialize JSON using the wrapper
             var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<DeviceConfigurationDto[]>>();
 
             if (apiResponse == null)

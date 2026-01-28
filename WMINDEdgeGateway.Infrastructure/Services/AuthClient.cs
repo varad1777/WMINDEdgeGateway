@@ -32,7 +32,7 @@ namespace WMINDEdgeGateway.Infrastructure.Services
 
             var content = await response.Content.ReadAsStringAsync();
             Console.WriteLine($"Auth service status: {response.StatusCode}");
-            Console.WriteLine($"Auth service response: {content}");
+            //Console.WriteLine($"Auth service response: {content}");
 
             response.EnsureSuccessStatusCode();
 
