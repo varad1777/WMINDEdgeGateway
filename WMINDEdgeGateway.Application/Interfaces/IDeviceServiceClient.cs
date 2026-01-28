@@ -9,7 +9,7 @@ namespace WMINDEdgeGateway.Application.Interfaces
 {
     public interface IDeviceServiceClient
     {
-        Task<DeviceConfigurationDto[]> GetConfigurationsAsync(string gatewayId, string token);
+        Task<DeviceConfigurationDto[]> GetConfigurationsAsync(string gatewayId);
     }
 }
 

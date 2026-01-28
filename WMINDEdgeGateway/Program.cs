@@ -48,8 +48,12 @@ var host = Host.CreateDefaultBuilder(args)
             {
                 BaseAddress = new Uri(configuration["Services:DeviceApiBaseUrl"]!)
             };
-            return new DeviceServiceClient(http);
+
+            var tokenService = sp.GetRequiredService<TokenService>();
+
+            return new DeviceServiceClient(http, tokenService);
         });
+
 
         // -----------------------------
         // CACHE
@@ -93,10 +97,7 @@ async Task InitializeCacheAsync(IServiceProvider services)
 
     string gatewayClientId = configuration["Gateway:ClientId"]!;
 
-    // ✅ Get auto-refresh token
-    var accessToken = await tokenService.GetTokenAsync();
-
-    var configs = await deviceClient.GetConfigurationsAsync(gatewayClientId, accessToken);
+    var configs = await deviceClient.GetConfigurationsAsync(gatewayClientId);
     var allConfigs = (configs ?? Array.Empty<DeviceConfigurationDto>()).ToList();
 
     cache.Set("DeviceConfigurations", allConfigs, TimeSpan.FromMinutes(30));
