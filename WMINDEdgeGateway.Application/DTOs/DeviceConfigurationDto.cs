@@ -9,37 +9,37 @@ namespace WMINDEdgeGateway.Application.DTOs
         public bool Success { get; set; }
 
         [JsonPropertyName("data")]
-        public T Data { get; set; }
+        public T? Data { get; set; }
 
         [JsonPropertyName("error")]
         public string? Error { get; set; }
     }
 
     public record DeviceRegisterDto(
-        [property: JsonPropertyName("registerId")] Guid RegisterId,
-        [property: JsonPropertyName("registerAddress")] int RegisterAddress,
-        [property: JsonPropertyName("registerLength")] int RegisterLength,
-        [property: JsonPropertyName("dataType")] string DataType,
-        [property: JsonPropertyName("scale")] double Scale,
-        [property: JsonPropertyName("unit")] string? Unit,
-        [property: JsonPropertyName("byteOrder")] string ByteOrder,
-        [property: JsonPropertyName("wordSwap")] bool WordSwap,
-        [property: JsonPropertyName("isHealthy")] bool IsHealthy
+        [property: JsonPropertyName("registerId")] Guid registerId,
+        [property: JsonPropertyName("registerAddress")] int registerAddress,
+        [property: JsonPropertyName("registerLength")] int registerLength,
+        [property: JsonPropertyName("dataType")] string dataType,
+        [property: JsonPropertyName("scale")] double scale,
+        [property: JsonPropertyName("unit")] string? unit,
+        [property: JsonPropertyName("byteOrder")] string byteOrder,
+        [property: JsonPropertyName("wordSwap")] bool wordSwap,
+        [property: JsonPropertyName("isHealthy")] bool isHealthy
     );
 
     public record DeviceSlaveDto(
-        [property: JsonPropertyName("deviceSlaveId")] Guid DeviceSlaveId,
-        [property: JsonPropertyName("slaveIndex")] int SlaveIndex,
-        [property: JsonPropertyName("isHealthy")] bool IsHealthy,
-        [property: JsonPropertyName("registers")] DeviceRegisterDto[] Registers
+        [property: JsonPropertyName("deviceSlaveId")] Guid deviceSlaveId,
+        [property: JsonPropertyName("slaveIndex")] int slaveIndex,
+        [property: JsonPropertyName("isHealthy")] bool isHealthy,
+        [property: JsonPropertyName("registers")] DeviceRegisterDto[] registers
     );
 
     public record DeviceConfigurationDto(
         [property: JsonPropertyName("deviceId")] Guid Id,
-        [property: JsonPropertyName("name")] string DeviceName,
-        [property: JsonPropertyName("protocol")] string Protocol,
-        [property: JsonPropertyName("pollIntervalMs")] int PollIntervalMs,
-        [property: JsonPropertyName("protocolSettingsJson")] string ConfigurationJson,
-        [property: JsonPropertyName("slaves")] DeviceSlaveDto[] Slaves
+        [property: JsonPropertyName("name")] string deviceName,
+        [property: JsonPropertyName("protocol")] string protocol,
+        [property: JsonPropertyName("pollIntervalMs")] int pollIntervalMs,
+        [property: JsonPropertyName("protocolSettingsJson")] string configurationJson,
+        [property: JsonPropertyName("slaves")] DeviceSlaveDto[] slaves
     );
 }
