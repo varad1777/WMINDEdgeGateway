@@ -4,12 +4,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
-using System.Linq;
 using System.Net.Http;
 using WMINDEdgeGateway.Application.DTOs;
 using WMINDEdgeGateway.Application.Interfaces;
 using WMINDEdgeGateway.Infrastructure.Caching;
 using WMINDEdgeGateway.Infrastructure.Services;
+using InfluxDB.Client;
 
 var host = Host.CreateDefaultBuilder(args)
     .ConfigureServices((context, services) =>
@@ -28,7 +28,8 @@ var host = Host.CreateDefaultBuilder(args)
             return new AuthClient(http);
         });
 
-        // TOKEN SERVICE (ADD THIS)
+        // -----------------------------
+        // TOKEN SERVICE
         // -----------------------------
         services.AddSingleton<TokenService>(sp =>
         {
@@ -48,21 +49,30 @@ var host = Host.CreateDefaultBuilder(args)
             {
                 BaseAddress = new Uri(configuration["Services:DeviceApiBaseUrl"]!)
             };
-
             var tokenService = sp.GetRequiredService<TokenService>();
-
             return new DeviceServiceClient(http, tokenService);
         });
 
-
         // -----------------------------
-        // CACHE
+        // MEMORY CACHE
         // -----------------------------
         services.AddMemoryCache();
         services.AddSingleton<MemoryCacheService>();
 
         // -----------------------------
-        // MODBUS BACKGROUND SERVICE
+        // INFLUXDB CLIENT
+        // -----------------------------
+        services.AddSingleton(sp =>
+        {
+            var url = configuration["InfluxDB:Url"] ?? "http://localhost:8086";
+            var token = configuration["InfluxDB:Token"] ?? "my-token";
+
+            // NEW: token is string, no ToCharArray()
+            return new InfluxDBClient(url, token);
+        });
+
+        // -----------------------------
+        // MODBUS POLLER BACKGROUND SERVICE
         // -----------------------------
         services.AddHostedService<ModbusPollerHostedService>();
     })
@@ -106,4 +116,3 @@ async Task InitializeCacheAsync(IServiceProvider services)
     Console.WriteLine("Modbus devices loaded into cache");
     Console.WriteLine($"Total devices in cache: {allConfigs.Count}");
 }
-
